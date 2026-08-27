@@ -1,5 +1,8 @@
 categories_cible:
-  default: ''
+  default: ""
   type: list
-  list_type: category
-  description: "Sélectionnez les catégories à trier automatiquement de A à Z"
+  description: >
+    Liste des slugs de catégories (séparés par |) pour lesquelles la liste
+    des sujets sera triée par titre (A→Z).
+    Exemple : docs|faq|ressources
+  refresh: true
