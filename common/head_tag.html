@@ -1,38 +1,62 @@
 <script type="text/x-discourse-plugin" version="0.8">
-  api.registerConnectorClass('discovery-navigation-bar-above', 'alphabetical-sort-btn', {
-    setupComponent(args, component) {
-      const category = args.category;
-      if (!category) {
-        component.set('showSort', false);
-        return;
-      }
+  api.onPageChange((url) => {
+    // 1. On cible uniquement les pages de catégories (/c/...)
+    if (!url.startsWith("/c/")) {
+      removeSortBanner();
+      return;
+    }
 
-      // Récupération des slugs autorisés dans le composant
-      const allowedCategories = String(settings.categories_cible || "")
-        .split("|")
-        .map(s => s.trim())
-        .filter(Boolean);
+    // 2. Récupération des slugs autorisés dans les paramètres du composant
+    const allowedCategories = String(settings.categories_cible || "")
+      .split("|")
+      .map(s => s.trim())
+      .filter(Boolean);
 
-      // Vérifie si le slug de la catégorie actuelle correspond
-      const isAllowed = allowedCategories.includes(category.slug);
-      component.set('showSort', isAllowed);
+    if (allowedCategories.length === 0) return;
 
-      if (isAllowed) {
-        // Construit le lien direct vers le filtre natif A -> Z
-        const filterUrl = `${Discourse.getURL("/filter")}?q=` + encodeURIComponent(`=category:${category.slug} order:title-asc`);
-        component.set('sortUrl', filterUrl);
-      }
+    // 3. Extraction du slug depuis l'URL actuelle (ex: /c/nom-de-cat/12 -> nom-de-cat)
+    const match = url.match(\/c\/([^\/]+)/);
+    if (!match) {
+      removeSortBanner();
+      return;
+    }
+
+    const currentSlug = match[1];
+
+    // 4. Si la catégorie actuelle fait partie de la liste
+    if (allowedCategories.includes(currentSlug)) {
+      injectSortBanner(currentSlug);
+    } else {
+      removeSortBanner();
     }
   });
-</script>
 
-<script type="text/x-handlebars" data-template-name="/connectors/discovery-navigation-bar-above/alphabetical-sort-btn">
-  {{#if showSort}}
-    <div class="alphabetical-sort-banner" style="margin: 10px 0; padding: 8px 12px; background: var(--highlight); border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
-      <span>Cette catégorie est affichée par défaut avec un tri personnalisé.</span>
-      <a href={{sortUrl}} class="btn btn-default btn-small" style="font-weight: bold;">
-        {{d-icon "sort-alpha-down"}} Voir le tri A-Z
+  function injectSortBanner(slug) {
+    // Évite les doublons si le bandeau est déjà présent
+    if (document.getElementById("alpha-sort-banner")) return;
+
+    // Cherche où injecter le bandeau (au-dessus de la liste des sujets)
+    const targetArea = document.querySelector(".list-controls") || document.querySelector(".category-navigation") || document.getElementById("main-outlet");
+    if (!targetArea) return;
+
+    const banner = document.createElement("div");
+    banner.id = "alpha-sort-banner";
+    banner.style.cssText = "margin: 15px 0; padding: 10px 15px; background: var(--highlight); border-radius: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 14px;";
+    
+    const filterUrl = `${Discourse.getURL("/filter")}?q=` + encodeURIComponent(`=category:${slug} order:title-asc`);
+
+    banner.innerHTML = `
+      <span>Cette catégorie bénéficie d'un tri alphabétique.</span>
+      <a href="${filterUrl}" class="btn btn-default btn-small" style="font-weight: bold; text-decoration: none;">
+        Trier de A à Z
       </a>
-    </div>
-  {{/if}}
+    `;
+
+    targetArea.parentNode.insertBefore(banner, targetArea);
+  }
+
+  function removeSortBanner() {
+    const existing = document.getElementById("alpha-sort-banner");
+    if (existing) existing.remove();
+  }
 </script>
