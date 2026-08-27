@@ -1,10 +1,9 @@
 import { apiInitializer } from "discourse/lib/api";
+import { schedule } from "@ember/runloop";
 
 const LOG_PREFIX = "[auto-alphabetical-sort]";
-const GUARD_KEY = "auto-alpha-last-redirect";
 
 export default apiInitializer("0.8", (api) => {
-  // type:list => selon la version : tableau OU chaîne "15|4|9"
   const raw = settings.categories_cible ?? "";
   const allowedIds = (Array.isArray(raw) ? raw : String(raw).split("|"))
     .map((entry) => String(entry).trim())
@@ -12,45 +11,42 @@ export default apiInitializer("0.8", (api) => {
 
   console.warn(LOG_PREFIX, "catégories configurées (IDs) :", allowedIds);
 
-  // Extrait { categoryPath, id } d'une URL du type /c/presentation-jeux/4/none
-  const matches = (path) => {
-    const m = path.match(/^\/c\/([^/]+(?:\/[^/]+)*)\/(\d+)(?:\/([^/?#]+))?(?:[?#].*)?$/);
-    return m ? { categoryPath: m[1], id: m[2] } : null;
+  const sortTopics = () => {
+    try {
+      const router = api.container.lookup("service:router");
+      const routeName = router.currentRoute?.name;
+      if (!routeName?.startsWith("discovery.category")) {
+        return; // pas une page de catégorie
+      }
+
+      const controller = api.container.lookup("controller:discovery/list") ||
+                         api.container.lookup("controller:discovery/topics");
+      const list = controller?.model;
+      const topics = list?.topics;
+      if (!topics?.length) {
+        return;
+      }
+
+      const category = list?.category || controller?.category;
+      if (!category || !allowedIds.includes(String(category.id))) {
+        return;
+      }
+
+      console.warn(LOG_PREFIX, "re-tri de", topics.length, "sujets par titre (catégorie", category.id + ")");
+
+      const sorted = [...topics].sort((a, b) =>
+        String(a.title).localeCompare(String(b.title), undefined, {
+          sensitivity: "base",
+          numeric: true,
+        })
+      );
+
+      // Remplacement de la collection => re-rendu de la liste
+      controller.set("model.topics", sorted);
+    } catch (err) {
+      console.error(LOG_PREFIX, "erreur :", err);
+    }
   };
 
-  api.onPageChange((url) => {
-    // "url" est généralement un chemin, parfois une URL complète
-    const path = url?.startsWith("http") ? new URL(url).pathname : url;
-
-    const matched = matches(path);
-    if (!matched) {
-      return; // pas une page de catégorie
-    }
-
-    // Ne pas interférer si l'utilisateur a déjà un tri ou filtre dans l'URL
-    if (/\?.*(order=|q=)/.test(path)) {
-      return;
-    }
-
-    if (!allowedIds.includes(matched.id)) {
-      console.warn(LOG_PREFIX, "catégorie NON configurée :", matched);
-      return;
-    }
-
-    // Éviter la re-redirection immédiate via le bouton "retour"
-    if (sessionStorage.getItem(GUARD_KEY) === path) {
-      sessionStorage.removeItem(GUARD_KEY);
-      return;
-    }
-
-    const categoryQuery = matched.categoryPath
-      .split("/")
-      .map((slug) => encodeURIComponent(slug))
-      .join(":");
-    const q = `=category:${categoryQuery} order:title-asc`;
-
-    console.warn(LOG_PREFIX, "redirection vers :", `/filter?q=${q}`);
-    sessionStorage.setItem(GUARD_KEY, path);
-    window.location.href = `/filter?q=${encodeURIComponent(q)}`;
-  });
+  api.onPageChange(() => schedule("afterRender", sortTopics));
 });
