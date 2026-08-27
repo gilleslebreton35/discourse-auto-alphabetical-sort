@@ -1,63 +1,56 @@
 import { apiInitializer } from "discourse/lib/api";
 
 const LOG_PREFIX = "[auto-alphabetical-sort]";
+const GUARD_KEY = "auto-alpha-last-redirect";
 
 export default apiInitializer("0.8", (api) => {
-  // Normalisation : selon la version, le réglage type:list renvoie
-  // soit un tableau ["docs", "faq"], soit une chaîne "docs|faq" (ou "").
+  // type:list => selon la version : tableau OU chaîne "15|4|9"
   const raw = settings.categories_cible ?? "";
-  const allowedCategories = (Array.isArray(raw) ? raw : String(raw).split("|"))
+  const allowedIds = (Array.isArray(raw) ? raw : String(raw).split("|"))
     .map((entry) => String(entry).trim())
     .filter(Boolean);
 
-  console.warn(LOG_PREFIX, "catégories configurées :", allowedCategories);
+  console.warn(LOG_PREFIX, "catégories configurées (IDs) :", allowedIds);
 
-  api.modifyClass("route:discovery.category", {
-    pluginId: "auto-alphabetical-sort",
+  // Extrait { categoryPath, id } d'une URL du type /c/presentation-jeux/4/none
+  const matches = (path) => {
+    const m = path.match(/^\/c\/([^/]+(?:\/[^/]+)*)\/(\d+)(?:\/([^/?#]+))?(?:[?#].*)?$/);
+    return m ? { categoryPath: m[1], id: m[2] } : null;
+  };
 
-    afterModel(model, transition) {
-      const result = this._super(...arguments);
-      if (!allowedCategories.length) {
-        return result;
-      }
+  api.onPageChange((url) => {
+    // "url" est généralement un chemin, parfois une URL complète
+    const path = url?.startsWith("http") ? new URL(url).pathname : url;
 
-      try {
-        const queryParams = transition.to?.queryParams || {};
-        if (queryParams.order || queryParams.q) {
-          return result;
-        }
+    const matched = matches(path);
+    if (!matched) {
+      return; // pas une page de catégorie
+    }
 
-        if (!model) {
-          return result;
-        }
+    // Ne pas interférer si l'utilisateur a déjà un tri ou filtre dans l'URL
+    if (/\?.*(order=|q=)/.test(path)) {
+      return;
+    }
 
-        const slugPath = (model.slug_path || []).join("/");
-        console.warn(LOG_PREFIX, "catégorie visitée :", {
-          id: model.id,
-          slug: model.slug,
-          slugPath,
-        });
+    if (!allowedIds.includes(matched.id)) {
+      console.warn(LOG_PREFIX, "catégorie NON configurée :", matched);
+      return;
+    }
 
-        const isConfigured =
-          allowedCategories.includes(slugPath) ||
-          allowedCategories.includes(model.slug) ||
-          allowedCategories.includes(String(model.id));
+    // Éviter la re-redirection immédiate via le bouton "retour"
+    if (sessionStorage.getItem(GUARD_KEY) === path) {
+      sessionStorage.removeItem(GUARD_KEY);
+      return;
+    }
 
-        if (!isConfigured) {
-          return result;
-        }
+    const categoryQuery = matched.categoryPath
+      .split("/")
+      .map((slug) => encodeURIComponent(slug))
+      .join(":");
+    const q = `=category:${categoryQuery} order:title-asc`;
 
-        const categoryQuery = (model.slug_path || [model.slug])
-          .map((slug) => encodeURIComponent(slug))
-          .join(":");
-        const q = `=category:${categoryQuery} order:title-asc`;
-
-        console.warn(LOG_PREFIX, "redirection vers /filter?q=", q);
-        return this.transitionTo("filter", { queryParams: { q } });
-      } catch (err) {
-        console.error(LOG_PREFIX, "erreur :", err);
-        return result;
-      }
-    },
+    console.warn(LOG_PREFIX, "redirection vers :", `/filter?q=${q}`);
+    sessionStorage.setItem(GUARD_KEY, path);
+    window.location.href = `/filter?q=${encodeURIComponent(q)}`;
   });
 });
