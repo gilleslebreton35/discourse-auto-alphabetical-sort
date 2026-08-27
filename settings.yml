@@ -1,8 +1,5 @@
 categories_cible:
   default: ""
   type: list
-  description: >
-    Liste des slugs de catégories (séparés par |) pour lesquelles la liste
-    des sujets sera triée par titre (A→Z).
-    Exemple : docs|faq|ressources
+  description: "Liste des slugs de catégories (séparés par |) ciblées par le tri A→Z. Exemple : docs|faq"
   refresh: true
