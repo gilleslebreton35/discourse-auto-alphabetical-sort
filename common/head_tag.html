@@ -1,43 +1,38 @@
 <script type="text/x-discourse-plugin" version="0.8">
   api.modifyClass('route:discovery.category', {
     pluginId: 'auto-alphabetical-sort',
-    
+
     beforeModel(transition) {
       this._super(...arguments);
-      
-      if (!transition.to) return;
 
-      // 1. Recherche du paramètre de la catégorie, même si on navigue dans une sous-route Discourse
-      const params = transition.to.params.category_slug_path_with_id 
-                     ? transition.to.params 
-                     : (transition.to.parent ? transition.to.parent.params : {});
-                     
-      const categoryPath = params.category_slug_path_with_id || params.id;
-      if (!categoryPath) return;
+      // Extraction propre et robuste des paramètres de la catégorie via Ember
+      const params = this.paramsFor('discovery.category');
+      if (!params || !params.category_slug_path_with_id) return;
 
-      // 2. Extraction sécurisée de l'ID de la catégorie (fonctionne avec les sous-catégories)
+      const categoryPath = params.category_slug_path_with_id;
       const parts = categoryPath.split('/');
       const categoryId = parseInt(parts[parts.length - 1], 10);
       if (isNaN(categoryId)) return;
 
-      // 3. Récupération robuste des paramètres sélectionnés dans le composant
-      const rawSettings = settings.categories_cible || "";
-      const allowedCategories = String(rawSettings)
-        .split('|')
-        .map(id => parseInt(id, 10))
-        .filter(id => !isNaN(id));
+      // Récupération sécurisée des catégories configurées
+      const allowedCategories = settings.categories_cible
+        ? String(settings.categories_cible)
+            .split('|')
+            .map(id => parseInt(id, 10))
+            .filter(id => !isNaN(id))
+        : [];
 
-      // 4. Si la catégorie visitée est dans la liste
+      // Application de la redirection si la catégorie est dans la sélection
       if (allowedCategories.includes(categoryId)) {
-        const queryParams = transition.to.queryParams || {};
-        
-        // Et qu'aucun tri n'est pas déjà demandé dans l'URL
+        const queryParams = transition.to?.queryParams || {};
+
         if (!queryParams.order) {
-          const newQueryParams = Object.assign({}, queryParams, { order: 'title', ascending: 'true' });
-          
-          // On force la redirection transparente avec le nouveau filtre
-          this.transitionTo('discovery.category', categoryPath, { 
-            queryParams: newQueryParams 
+          // Le RETURN est indispensable pour interrompre la transition en cours et stopper la boucle 429
+          return this.transitionTo('discovery.category', categoryPath, {
+            queryParams: Object.assign({}, queryParams, {
+              order: 'title',
+              ascending: true // Type booléen strict
+            })
           });
         }
       }
