@@ -1,0 +1,30 @@
+<script type="text/x-discourse-plugin" version="0.8">
+  api.modifyClass('route:discovery.category', {
+    pluginId: 'auto-alphabetical-sort',
+    beforeModel(transition) {
+      this._super(...arguments);
+      
+      if (!transition.to || !transition.to.params) return;
+      const categoryPath = transition.to.params.category_slug_path_with_id;
+      if (!categoryPath) return;
+
+      const parts = categoryPath.split('/');
+      const categoryId = parseInt(parts[parts.length - 1], 10);
+      if (isNaN(categoryId)) return;
+
+      const allowedCategories = settings.categories_cible
+        ? settings.categories_cible.split('|').map(id => parseInt(id, 10))
+        : [];
+
+      if (allowedCategories.includes(categoryId)) {
+        const queryParams = transition.to.queryParams || {};
+        
+        if (!queryParams.order) {
+          this.transitionTo('discovery.category', categoryPath, { 
+            queryParams: Object.assign({}, queryParams, { order: 'title', ascending: 'true' }) 
+          });
+        }
+      }
+    }
+  });
+</script>
