@@ -1,41 +1,38 @@
 <script type="text/x-discourse-plugin" version="0.8">
-  api.modifyClass('route:discovery.category', {
-    pluginId: 'auto-alphabetical-sort',
+  api.registerConnectorClass('discovery-navigation-bar-above', 'alphabetical-sort-btn', {
+    setupComponent(args, component) {
+      const category = args.category;
+      if (!category) {
+        component.set('showSort', false);
+        return;
+      }
 
-    beforeModel(transition) {
-      this._super(...arguments);
+      // Récupération des slugs autorisés dans le composant
+      const allowedCategories = String(settings.categories_cible || "")
+        .split("|")
+        .map(s => s.trim())
+        .filter(Boolean);
 
-      // Extraction propre et robuste des paramètres de la catégorie via Ember
-      const params = this.paramsFor('discovery.category');
-      if (!params || !params.category_slug_path_with_id) return;
+      // Vérifie si le slug de la catégorie actuelle correspond
+      const isAllowed = allowedCategories.includes(category.slug);
+      component.set('showSort', isAllowed);
 
-      const categoryPath = params.category_slug_path_with_id;
-      const parts = categoryPath.split('/');
-      const categoryId = parseInt(parts[parts.length - 1], 10);
-      if (isNaN(categoryId)) return;
-
-      // Récupération sécurisée des catégories configurées
-      const allowedCategories = settings.categories_cible
-        ? String(settings.categories_cible)
-            .split('|')
-            .map(id => parseInt(id, 10))
-            .filter(id => !isNaN(id))
-        : [];
-
-      // Application de la redirection si la catégorie est dans la sélection
-      if (allowedCategories.includes(categoryId)) {
-        const queryParams = transition.to?.queryParams || {};
-
-        if (!queryParams.order) {
-          // Le RETURN est indispensable pour interrompre la transition en cours et stopper la boucle 429
-          return this.transitionTo('discovery.category', categoryPath, {
-            queryParams: Object.assign({}, queryParams, {
-              order: 'title',
-              ascending: true // Type booléen strict
-            })
-          });
-        }
+      if (isAllowed) {
+        // Construit le lien direct vers le filtre natif A -> Z
+        const filterUrl = `${Discourse.getURL("/filter")}?q=` + encodeURIComponent(`=category:${category.slug} order:title-asc`);
+        component.set('sortUrl', filterUrl);
       }
     }
   });
+</script>
+
+<script type="text/x-handlebars" data-template-name="/connectors/discovery-navigation-bar-above/alphabetical-sort-btn">
+  {{#if showSort}}
+    <div class="alphabetical-sort-banner" style="margin: 10px 0; padding: 8px 12px; background: var(--highlight); border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
+      <span>Cette catégorie est affichée par défaut avec un tri personnalisé.</span>
+      <a href={{sortUrl}} class="btn btn-default btn-small" style="font-weight: bold;">
+        {{d-icon "sort-alpha-down"}} Voir le tri A-Z
+      </a>
+    </div>
+  {{/if}}
 </script>
