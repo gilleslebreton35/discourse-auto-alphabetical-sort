@@ -1,0 +1,1 @@
+# discourse-auto-alphabetical-sort
