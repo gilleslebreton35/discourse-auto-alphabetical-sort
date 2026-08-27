@@ -1,4 +1,5 @@
 categories_cible:
   default: ''
   type: list
+  list_type: category
   description: "Sélectionnez les catégories à trier automatiquement de A à Z"
